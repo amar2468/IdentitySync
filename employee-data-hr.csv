@@ -1,0 +1,10 @@
+EmployeeID,FirstName,LastName,Email,JobTitle,Department,ManagerID,EmployeeType,HireDate,Status
+1001,Aisha,Khan,aisha.khan@example.com,Senior Software Engineer,Engineering,1005,FullTime,15/03/2021,Active
+1002,Liam,O'Connor,liam.oconnor@example.com,Product Manager,Sales,1005,FullTime,10/01/2022,Active
+1003,Elena,Rostova,elena.rostova@example.com,HR Specialist,Human Resources,1006,FullTime,01/08/2020,Active
+1004,Marcus,Vance,marcus.vance@example.com,Security Analyst,IT,1006,Contractor,22/05/2023,Active
+1005,Sophia,Chen,sophia.chen@example.com,Engineering Director,Engineering,,FullTime,01/11/2018,Active
+1006,David,Miller,david.miller@example.com,VP of Operations,Operations,1005,FullTime,12/04/2017,Active
+1007,Chloe,Dubois,chloe.dubois@example.com,UX Designer,IT,1002,FullTime,01/02/2024,Active
+1008,Taro,Tanaka,taro.tanaka@example.com,DevOps Engineer,Engineering,1005,Contractor,15/09/2023,Active
+1009,Sarah,Jenkins,sarah.jenkins@example.com,Financial Analyst,Finance,1006,FullTime,30/06/2019,Terminated
