@@ -38,7 +38,10 @@ $secret_params = @{
 }
 
 # Adding the client secret to this app registration using the specified parameters
-$client_secret = Add-MgApplicationPassword @secret_params
+$client_secret_obj = Add-MgApplicationPassword @secret_params
+
+# Extracting the client secret text value into the variable
+$client_secret = $client_secret_obj.SecretText
 
 # Populating the app ID using the app registration's app ID, linking the service principal to the original app registration.
 $service_principal_id = @{
@@ -81,7 +84,7 @@ New-MgGroupAppRoleAssignment @app_role_params
 $app_reg_credentials = [PSCustomObject]@{
     TenantId = $tenant_id
     AppId = $app_id
-    ClientSecret = $client_secret.SecretText
+    ClientSecret = $client_secret
 }
 
 # Formatting the results in the form of a table, using the custom object
