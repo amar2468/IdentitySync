@@ -1,11 +1,16 @@
+# Extract the tenant_id from the .env file
+$tenant_id = (ConvertFrom-StringData (Get-Content -Raw .env)).tenant_id
+
+Import-Module Microsoft.Graph.Authentication
+
 # Connect to Microsoft Graph for the specified tenant and request permissions to manage users and group memberships.
-Connect-MgGraph -TenantId "3d9354b2-4be9-4ccd-b294-eefdbe22906a" -Scopes "User.ReadWrite.All","GroupMember.ReadWrite.All"
+Connect-MgGraph -TenantId $tenant_id -Scopes "User.ReadWrite.All","GroupMember.ReadWrite.All"
 
 # Importing the CSV file with the employee data
 $employee_data = Import-Csv -Path ".\employee-data-hr.csv"
 
 # Retrieving all users within the Entra ID tenant, and extracting the user principal name for each
-$all_users_in_entra = Get-MgUser | Select-Object -ExpandProperty UserPrincipalName
+$all_users_in_entra = Get-MgUser -All | Select-Object -ExpandProperty UserPrincipalName
 
 # Mapping departments against the group that the employee should be assigned to
 $department_mappings = @{
@@ -53,7 +58,7 @@ foreach ($employee in $employee_data) {
         GivenName = $employee.FirstName
         Surname = $employee.LastName
         PasswordProfile = @{
-            Password = "WelcomeToEntra2026#"
+            Password = (Get-Content .env | Select-String "^DEFAULT_PASSWORD=")[0].Line.Split('=', 2)[1]
             ForceChangePasswordNextSignIn = $true
         }
         JobTitle = $employee.JobTitle
@@ -73,15 +78,20 @@ foreach ($employee in $employee_data) {
 
     # If the employee is not in Entra ID, create the user in Entra ID
     if ($all_users_in_entra -notcontains $employee_email) {
-        New-MgUser @entra_params
+        $newUser = New-MgUser @entra_params
 
-        $department_profile = $department_mappings[$employee.Department]
+        # Check if there is a mapping for the department
+        if ($department_mappings.ContainsKey($employee.Department)) {
+            $department_profile = $department_mappings[$employee.Department]
 
-        $user = Get-MgUser -UserId $employee_email
+            $group = Get-MgGroup -Filter "displayName eq '$($department_profile.Group)'"
 
-        $group = Get-MgGroup -Filter "displayName eq '$($department_profile.Group)'"
+            New-MgGroupMember -GroupId $group.Id -DirectoryObjectId $newUser.Id
+        }
 
-        New-MgGroupMember -GroupId $group.Id -DirectoryObjectId $user.Id
+        else {
+            Write-Warning "No group mapping found for department: $($employee.Department)"
+        }
     }
 }
 
