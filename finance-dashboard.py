@@ -14,10 +14,13 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = "secret-session-key"
 app.config["SESSION_TYPE"] = "filesystem"
 
+# Extracting the tenant_id from the .env file
+tenant_id = os.getenv("TENANT_ID")
+
 # Initialise Microsoft Entra ID authentication
 auth = Auth(
     app,
-    authority=os.getenv("AUTHORITY"),
+    authority=f"https://login.microsoftonline.com/{tenant_id}",
     client_id=os.getenv("CLIENT_ID"),
     client_credential=os.getenv("CLIENT_SECRET"),
     redirect_uri="http://localhost:5000/getAToken",
