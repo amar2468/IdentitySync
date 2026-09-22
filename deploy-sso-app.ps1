@@ -5,7 +5,7 @@ $tenant_id = (ConvertFrom-StringData (Get-Content -Raw .env)).tenant_id
 if ($null -eq $tenant_id) {
     Write-Warning "Tenant ID could not be found in the .env file."
 
-    exit
+    exit 1
 }
 
 # Attempting to import the relevant Graph modules
@@ -17,9 +17,9 @@ try {
 
 # Terminating script execution if the Graph module couldn't be imported
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to import required modules: $_"
 
-    exit
+    exit 1
 }
 
 # Connect to Microsoft Graph for the specified tenant and request permissions to create and manage app registrations/enterprise apps
@@ -29,9 +29,9 @@ try {
 
 # Terminating script execution if the connection to Microsoft Graph failed
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to connect to Microsoft Graph: $_"
 
-    exit
+    exit 1
 }
 
 # Defining the application name, redirect URI, and security group name that should have access to the app
@@ -56,9 +56,9 @@ try {
 
 # Terminating the script execution if the app registration couldn't be created
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to create app registration: $_"
 
-    exit
+    exit 1
 }
 
 # Extracting the application (client) ID and the object ID for the newly created app registration
@@ -82,9 +82,9 @@ try {
 
 # Terminating the script execution if the client secret couldn't be added to the app registration
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to add client secret to app registration: $_"
 
-    exit
+    exit 1
 }
 
 # Extracting the client secret text value into the variable
@@ -103,9 +103,9 @@ try {
 
 # Terminating the script execution if the service principal couldn't be created
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to create service principal: $_"
 
-    exit
+    exit 1
 }
 
 # Extracting the object ID for this service principal
@@ -118,9 +118,9 @@ try {
 
 # Terminating the script execution if the the setting couldn't be modified
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to configure setting for group assignment: $_"
 
-    exit
+    exit 1
 }
 
 # Quering Entra ID to find the security group specified
@@ -130,9 +130,9 @@ try {
 
 # Terminating the script execution if the security group couldn't be found
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to find the security group: $_"
 
-    exit
+    exit 1
 }
 
 # Extracting the security group object ID from Entra ID
@@ -161,9 +161,9 @@ try {
 
 # Terminating the script execution if there was an issue with assigning the security group to the service principal
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to assign security group to service principal: $_"
 
-    exit
+    exit 1
 }
 
 # Creating a ps custom object to define the tenant ID, app ID, and client secret, for easy retrieval.
@@ -187,5 +187,5 @@ try {
 
 # Showing the error message if the .env file couldn't be updated
 catch {
-    Write-Warning "$($_.Exception.Message)"
+    Write-Warning "Failed to update .env file: $_"
 }
