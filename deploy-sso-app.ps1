@@ -1,9 +1,29 @@
-# Extract the tenant_id from the .env file
-$tenant_id = (ConvertFrom-StringData (Get-Content -Raw .env)).tenant_id
+# Defining the log file
+$log_file = "$PSScriptRoot\Logs\log_deploy_sso_app.log"
+
+# Defining the env file
+$env_file = "$PSScriptRoot\.env"
+
+# Check if .env file exists
+if (Test-Path $env_file) {
+    # Extract the tenant_id from the .env file
+    $tenant_id = (ConvertFrom-StringData (Get-Content -Raw $env_file)).tenant_id
+}
+
+# Stop script execution if .env file doesn't exist
+else {
+    Write-Warning "Failed to open .env file: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to open .env file: $_"
+
+    exit 1
+}
 
 # Terminating script execution if the tenant_id can't be found in the .env file
 if ($null -eq $tenant_id) {
     Write-Warning "Tenant ID could not be found in the .env file."
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Tenant ID could not be found in the .env file: $_"
 
     exit 1
 }
@@ -13,31 +33,64 @@ try {
     Import-Module Microsoft.Graph.Applications -ErrorAction Stop
 
     Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Imported the required Graph modules"
 }
 
 # Terminating script execution if the Graph module couldn't be imported
 catch {
     Write-Warning "Failed to import required modules: $_"
 
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to import the required Graph modules: $_"
+
     exit 1
 }
 
-# Connect to Microsoft Graph for the specified tenant and request permissions to create and manage app registrations/enterprise apps
+# Attempting to import the relevant Azure Key Vault module
 try {
-    Connect-MgGraph -TenantId $tenant_id -Scopes "Application.ReadWrite.All","Group.Read.All" -ErrorAction Stop
+    if (Get-Module -Name "Az.KeyVault" -ListAvailable) {
+        Import-Module Az.KeyVault -ErrorAction Stop
+    }
+
+    else {
+        Install-Module Az.KeyVault -ErrorAction Stop
+    }
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Successfully imported module: Az.KeyVault"
+}
+
+# Stop executing script if the Az.KeyVault module couldn't be imported
+catch {
+    Write-Warning "Failed to import module: Az.KeyVault: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to import module: Az.KeyVault: $_"
+
+    exit 1
+}
+
+# Connect to Azure account & Microsoft Graph for the specified tenant and
+# request permissions to create and manage app registrations/enterprise apps
+try {
+    Connect-AzAccount
+
+    Connect-MgGraph -Scopes "Application.ReadWrite.All","Group.Read.All" -ContextScope Process -ErrorAction Stop
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Successfully connected to Microsoft Graph"
 }
 
 # Terminating script execution if the connection to Microsoft Graph failed
 catch {
     Write-Warning "Failed to connect to Microsoft Graph: $_"
 
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to connect to Microsoft Graph: $_"
+
     exit 1
 }
 
 # Defining the application name, redirect URI, and security group name that should have access to the app
-$application_name = "Finance Dashboard"
-$web_redirect_uri = "http://localhost:5000/getAToken"
-$assigned_security_group = "Finance"
+$application_name = Read-Host "Enter the app registration name: "
+$web_redirect_uri = Read-Host "Enter the redirect URI for the app registration: "
+$assigned_security_group = Read-Host "Enter the security group name: "
 
 # Populating the parameters that are necessary to create the app registration
 $app_params = @{
@@ -52,11 +105,15 @@ $app_params = @{
 # Creating the app registration using the specified parameters
 try {
     $new_app = New-MgApplication @app_params
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] App Registration created successfully"
 }
 
 # Terminating the script execution if the app registration couldn't be created
 catch {
     Write-Warning "Failed to create app registration: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to create app registration: $_"
 
     exit 1
 }
@@ -78,11 +135,15 @@ $secret_params = @{
 # Adding the client secret to this app registration using the specified parameters
 try {
     $client_secret_obj = Add-MgApplicationPassword @secret_params
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Created client secret for app registration"
 }
 
 # Terminating the script execution if the client secret couldn't be added to the app registration
 catch {
     Write-Warning "Failed to add client secret to app registration: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to add client secret to app registration: $_"
 
     exit 1
 }
@@ -99,11 +160,15 @@ $service_principal_id = @{
 # Creating the service principal using the app registration's app ID
 try {
     $service_principal = New-MgServicePrincipal -BodyParameter $service_principal_id
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Created the service principal"
 }
 
 # Terminating the script execution if the service principal couldn't be created
 catch {
     Write-Warning "Failed to create service principal: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to create service principal: $_"
 
     exit 1
 }
@@ -120,6 +185,8 @@ try {
 catch {
     Write-Warning "Failed to configure setting for group assignment: $_"
 
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to configure setting for group assignment: $_"
+
     exit 1
 }
 
@@ -131,6 +198,8 @@ try {
 # Terminating the script execution if the security group couldn't be found
 catch {
     Write-Warning "Failed to find the security group: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to find the security group: $_"
 
     exit 1
 }
@@ -157,11 +226,15 @@ $app_role_params = @{
 # Assigning the security group to the service principal using the specified parameters
 try {
     New-MgGroupAppRoleAssignment @app_role_params
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Assigned security group to service principal"
 }
 
 # Terminating the script execution if there was an issue with assigning the security group to the service principal
 catch {
     Write-Warning "Failed to assign security group to service principal: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to assign security group to service principal: $_"
 
     exit 1
 }
@@ -170,22 +243,37 @@ catch {
 $app_reg_credentials = [PSCustomObject]@{
     TenantId = $tenant_id
     AppId = $app_id
-    ClientSecret = $client_secret
+    ClientSecret = (ConvertTo-SecureString $client_secret -AsPlainText -Force)
 }
 
 # Formatting the results in the form of a table, using the custom object
 $app_reg_credentials | Format-Table
 
-# Updating the credentials in the .env file
-try {
-    # Updating the client secret within the .env file
-    (Get-Content .env -ErrorAction Stop) -replace "^(client_secret\s*=\s*).*", "`${1}$client_secret" | Set-Content .env -ErrorAction Stop
+# Only retrieve the key vault name from .env file if the .env file exists
+if (Test-Path $env_file) {
+    # Extracting the key vault name from the .env file
+    $key_vault_name = (ConvertFrom-StringData (Get-Content -Raw $env_file)).KEY_VAULT_NAME
+}
 
-    # Updating the client ID within the .env file
-    (Get-Content .env -ErrorAction Stop) -replace "^(client_id\s*=\s*).*", "`${1}$app_id" | Set-Content .env -ErrorAction Stop
+# Stop script execution if .env file doesn't exist
+else {
+    Write-Warning "Failed to open .env file: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to open .env file: $_"
+
+    exit 1
+}
+
+# Adding the app credentials to Azure Key Vault
+try {
+    Set-AzKeyVaultSecret -VaultName $key_vault_name -Name $app_reg_credentials.AppId -SecretValue $app_reg_credentials.ClientSecret -ErrorAction Stop
+
+    Add-Content -Path $env_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Successfully added the app credentials to the key vault"
 }
 
 # Showing the error message if the .env file couldn't be updated
 catch {
-    Write-Warning "Failed to update .env file: $_"
+    Write-Warning "Failed to update key vault with app credentials: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to update key vault with app credentials: $_"
 }
