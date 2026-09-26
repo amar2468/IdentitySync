@@ -1,9 +1,29 @@
-# Extract the tenant_id from the .env file
-$tenant_id = (ConvertFrom-StringData (Get-Content -Raw .env)).tenant_id
+# Retrieving the log file
+$log_file = "$PSScriptRoot\Logs\log_onboard_users.log"
+
+# Defining the env file
+$env_file = "$PSScriptRoot\.env"
+
+# Check if .env file exists
+if (Test-Path $env_file) {
+    # Extract the tenant_id from the .env file
+    $tenant_id = (ConvertFrom-StringData (Get-Content -Raw $env_file)).tenant_id
+}
+
+# Stop script execution if .env file doesn't exist
+else {
+    Write-Warning "Failed to open .env file: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to open .env file: $_"
+
+    exit 1
+}
 
 # Terminating script execution if the tenant_id can't be found in the .env file
 if ($null -eq $tenant_id) {
     Write-Warning "Tenant ID could not be found in the .env file."
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Tenant ID could not be found in the .env file: $_"
 
     exit 1
 }
@@ -11,23 +31,31 @@ if ($null -eq $tenant_id) {
 # Attempting to import the relevant Graph module
 try {
     Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Imported the required module"
 }
 
 # Terminating script execution if the Graph module couldn't be imported
 catch {
     Write-Warning "Failed to import the required module: $_"
 
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to import the required module: $_"
+
     exit 1
 }
 
 # Connect to Microsoft Graph for the specified tenant and request permissions to manage users and group memberships.
 try {
-    Connect-MgGraph -TenantId $tenant_id -Scopes "User.ReadWrite.All","GroupMember.ReadWrite.All"
+    Connect-MgGraph -TenantId $tenant_id -Scopes "User.ReadWrite.All","GroupMember.ReadWrite.All" -ErrorAction Stop
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Successfully connected to Microsoft Graph"
 }
 
 # Terminating script execution if the connection to Microsoft Graph failed
 catch {
     Write-Warning "Failed to connect to Microsoft Graph: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to connect to Microsoft Graph: $_"
 
     exit 1
 }
@@ -36,14 +64,22 @@ catch {
 try {
     $employee_data = Import-Csv -Path ".\employee-data-hr.csv" -ErrorAction Stop
 
+    # Appending information to the log file
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] CSV Imported"
+
     # Retrieving all users within the Entra ID tenant, and extracting the user principal name for each
     $all_users_in_entra = Get-MgUser -All -ErrorAction Stop | Select-Object -ExpandProperty UserPrincipalName
-
+    
+    # Appending information to the log file
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] All users retrieved from Entra ID"
 }
 
 # Terminate script execution if CSV couldn't be imported or users couldn't be retrieved from Entra ID
 catch {
     Write-Warning "Failed to import CSV OR retrieve Entra users: $_"
+
+    # Appending information to the log file
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Error encountered: $_"
 
     exit 1
 }
@@ -81,22 +117,33 @@ foreach ($employee in $employee_data) {
 
 Write-Host "Creating users in Entra ID..." -ForegroundColor Yellow
 
+# Appending information to the log file
+Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Creating users in Entra ID..."
+
 # Read the default user password from the .env file and save it in a variable
 try {
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Reading .env file and looking for password..."
+
     # Read .env file and look for the password titled "DEFAULT_PASSWORD"
-    $env_content = Get-Content -Path .env -ErrorAction Stop
+    $env_content = Get-Content -Path $env_file -ErrorAction Stop
     $match = $env_content | Select-String -Pattern "^DEFAULT_PASSWORD=(.*)$"
     
     # If an occurrence of the "DEFAULT_PASSWORD" key couldn't be found in .env file, throw an error
     if (-not $match) {
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Password not found in the .env file"
         throw "DEFAULT_PASSWORD key was not found in .env file."
     }
 
     # Extract password value
     $default_password = $match.Matches.Groups[1].Value
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Password retrieved from .env file"
 }
 catch {
     Write-Warning "Failed to load default password from .env: $_"
+
+    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Failed to load default password from .env: $_"
+
     exit 1
 }
 
@@ -107,6 +154,8 @@ foreach ($employee in $employee_data) {
 
     # If the employee is not in Entra ID, create the user in Entra ID
     if ($all_users_in_entra -notcontains $employee_email) {
+
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $employee_email not in Entra ID. Creating user..."
 
         # Extracting the email prefix
         $upn_prefix = $employee_email.Split("@")[0]
@@ -145,11 +194,15 @@ foreach ($employee in $employee_data) {
             $newUser = New-MgUser @entra_params
 
             Write-Host "Successfully created the following user in Entra ID: $employee_email" -ForegroundColor Yellow
+
+            Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Created the following user in Entra ID: $employee_email"
         }
 
         # Indicating what user accounts didn't get created in Entra ID
         catch {
             Write-Warning "Error encountered when creating the user account for $employee_email : $_"
+
+            Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Error encountered when creating user account for - $employee_email : $_"
 
             continue
         }
@@ -169,11 +222,15 @@ foreach ($employee in $employee_data) {
                     $group_id = Get-MgGroup -Filter "displayName eq '$group'" -ErrorAction Stop
 
                     New-MgGroupMember -GroupId $group_id -DirectoryObjectId $newUser.Id -ErrorAction Stop
+
+                    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Adding $employee_email to the following security group: $group"
                 }
 
                 # Indicating what groups the user was not added to
                 catch {
                     Write-Warning "User - $employee_email - was not added to this group - $group : $_"
+
+                    Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [WARNING] User - $employee_email - was not added to this group - $group : $_"
                 }
             }
         }
@@ -181,12 +238,16 @@ foreach ($employee in $employee_data) {
         # If no mapping was found for the department, a warning will be displayed
         else {
             Write-Warning "No group mapping found for department: $($employee.Department)"
+
+            Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [WARNING] No group mapping found for department: $($employee.Department)"
         }
     }
 
     # Notify if the user already exists
     else {
         Write-Warning "User - $employee_email - already exists in Entra ID"
+
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] User - $employee_email - already exists in Entra ID"
     }
 }
 
@@ -196,7 +257,10 @@ foreach ($employee in $employee_data) {
     # Check if the manager ID is empty, null, or contains only spaces. 
     # If it does, it skips the step of setting the manager and moves on to new employee
     if ([string]::IsNullOrWhiteSpace($employee.ManagerID)) {
-        Write-Warning "Manager ID in CSV is either empty, null, or contains only spaces - skipping the step to set the manager for $employee.Email"
+        Write-Warning "Manager ID in CSV is either empty, null, or contains only spaces - skipping the step to set the manager for $($employee.Email)"
+
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [WARNING] Manager ID in CSV is either empty, null, or contains only spaces - skipping the step to set the manager for $($employee.Email)"
+
         continue
     }
 
@@ -211,6 +275,9 @@ foreach ($employee in $employee_data) {
     # Terminating script execution if the user record couldn't be retrieved from Entra ID
     catch {
         Write-Warning "User - $employee_email - couldn't be retrieved from Entra ID to assign manager: $_"
+
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] User - $employee_email - couldn't be retrieved from Entra ID to assign manager: $_"
+
         exit 1
     }
 
@@ -220,6 +287,8 @@ foreach ($employee in $employee_data) {
     # If the manager is already assigned for this employee, no action is required and we can move to the next employee
     if ($check_manager_assigned) {
         Write-Warning "User - $employee_email - already has manager assigned - no action taken"
+
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] User - $employee_email - already has manager assigned - no action taken"
 
         continue
     }
@@ -235,6 +304,9 @@ foreach ($employee in $employee_data) {
     # Terminating script execution if the manager record couldn't be retrieved from Entra ID
     catch {
         Write-Warning "The manager - $($manager_record.Email) - couldn't be retrieved from Entra ID: $_"
+
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] The manager - $($manager_record.Email) - couldn't be retrieved from Entra ID: $_"
+
         exit 1
     }
 
@@ -249,11 +321,16 @@ foreach ($employee in $employee_data) {
     # Setting the manager ID for this employee using the Entra ID GUID for the manager
     try {
         Set-MgUserManagerByRef @manager_params
+
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Successfully set the manager for the following user: $employee_email"
     }
 
     # Terminating script execution if there was an issue with setting the manager ID for the employee
     catch {
         Write-Warning "Issue with assigning the manager - $($manager_record.Email) - to the user - $employee_email : $_"
+
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] Issue with assigning the manager - $($manager_record.Email) - to the user - $employee_email : $_"
+
         exit 1
     }
 }
