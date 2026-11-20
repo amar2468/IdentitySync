@@ -64,6 +64,16 @@ catch {
 try {
     $employee_data = Import-Csv -Path ".\employee-data-hr.csv" -ErrorAction Stop
 
+    # Stop executing script if no employees found in the CSV file.
+    if ($employee_data.count -eq 0) {
+        Write-Warning "No employees found in the CSV."
+
+        # Appending information to the log file
+        Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [ERROR] No employees found in the csv"
+
+        exit 1
+    }
+
     # Appending information to the log file
     Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] CSV Imported"
 
@@ -219,9 +229,9 @@ foreach ($employee in $employee_data) {
 
                 # Retrieving the security group and adding the user to it
                 try {
-                    $group_id = Get-MgGroup -Filter "displayName eq '$group'" -ErrorAction Stop
+                    $group_obj = Get-MgGroup -Filter "displayName eq '$group'" -ErrorAction Stop
 
-                    New-MgGroupMember -GroupId $group_id -DirectoryObjectId $newUser.Id -ErrorAction Stop
+                    New-MgGroupMember -GroupId $group_obj.id -DirectoryObjectId $newUser.Id -ErrorAction Stop
 
                     Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Adding $employee_email to the following security group: $group"
                 }
@@ -257,6 +267,12 @@ foreach ($employee in $employee_data) {
     # Check if the manager ID is empty, null, or contains only spaces. 
     # If it does, it skips the step of setting the manager and moves on to new employee
     if ([string]::IsNullOrWhiteSpace($employee.ManagerID)) {
+
+        # Skipping the step of assigning manager to the CEO
+        if ($employee.JobTitle -eq "CEO") {
+            continue
+        }
+
         Write-Warning "Manager ID in CSV is either empty, null, or contains only spaces - skipping the step to set the manager for $($employee.Email)"
 
         Add-Content -Path $log_file -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [WARNING] Manager ID in CSV is either empty, null, or contains only spaces - skipping the step to set the manager for $($employee.Email)"
